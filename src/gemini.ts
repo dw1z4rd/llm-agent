@@ -1,4 +1,5 @@
 import type { GeminiResponse, GeminiProviderConfig, LLMProvider, LLMOptions } from './types';
+import { redactKey } from './utils';
 
 const DEFAULT_MODEL = 'gemini-2.0-flash';
 
@@ -28,21 +29,13 @@ export async function callGemini<T = GeminiResponse>(
 
 		if (!response.ok) {
 			const text = await response.text();
-			// Redact API key from response body in case it's echoed in the error
-			const sanitizedText =
-				apiKey && apiKey.length > 0 ? text.split(apiKey).join('[REDACTED_KEY]') : text;
-			// Truncate to avoid massive logs
-			console.error(`[Gemini] API Error ${response.status}:`, sanitizedText.slice(0, 500));
+				console.error(`[Gemini] API Error ${response.status}:`, redactKey(text, apiKey).slice(0, 500));
 			return null;
 		}
 
 		return await response.json() as T;
 	} catch (e: any) {
-		// Redact API key from error message if it appears (e.g. in URL)
-		const rawMsg = e.message || String(e);
-		const sanitizedMsg =
-			apiKey && apiKey.length > 0 ? rawMsg.split(apiKey).join('[REDACTED_KEY]') : rawMsg;
-		console.error('[Gemini] Network Error:', sanitizedMsg);
+		console.error('[Gemini] Network Error:', redactKey(e.message || String(e), apiKey));
 		return null;
 	}
 }
