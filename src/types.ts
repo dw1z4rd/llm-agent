@@ -9,6 +9,8 @@ export interface LLMOptions {
 	readonly maxTokens?: number;
 	/** Sampling temperature (higher = more creative) */
 	readonly temperature?: number;
+	/** System prompt to set context or behavior for the model */
+	readonly systemPrompt?: string;
 }
 
 /**
@@ -33,6 +35,10 @@ export interface LLMProvider {
 export interface RetryConfig {
 	/** Maximum number of retry attempts (default: 3) */
 	readonly maxRetries: number;
+	/** Initial delay in ms before the first retry (default: 500) */
+	readonly initialDelayMs?: number;
+	/** Multiplier applied to the delay after each attempt (default: 2) */
+	readonly backoffFactor?: number;
 	/** Callback invoked on each failed attempt */
 	readonly onRetryableFailure?: (attempt: number, error?: unknown) => void;
 }

@@ -2,7 +2,7 @@
 // LLM-agnostic AI agent library — plug in any LLM provider
 
 // Generic LLM provider interface and retry wrapper
-export { withRetry } from './retry';
+export { withRetry, withSystemPrompt } from './retry';
 
 // Built-in Gemini provider and low-level helpers
 export { callGemini, extractGeminiText, extractCleanGeminiText, createGeminiProvider } from './gemini';
