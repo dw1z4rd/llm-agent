@@ -53,11 +53,24 @@ export const withRetry = (provider: LLMProvider, config?: RetryConfig): LLMProvi
  * The `systemPrompt` passed via `options` at call-time takes precedence
  * over the one provided here.
  *
+ * **Note:** This wrapper uses text concatenation (`"<system>\n\n<user>"`),
+ * which is provider-agnostic but bypasses native system prompt fields.
+ * For example, `createGeminiProvider` sends `systemPrompt` as a native
+ * `systemInstruction` when passed via `options` directly — but that native
+ * path is not used when going through this wrapper.
+ * Prefer passing `systemPrompt` in `options` directly when using a provider
+ * that supports it natively.
+ *
  * @example
  * ```ts
- * const provider = createGeminiProvider({ apiKey: 'key' });
+ * // Universal: works with any provider via text concatenation
  * const agent = withSystemPrompt(provider, 'You are a helpful assistant.');
  * const text = await agent.generateText('What is 2+2?');
+ *
+ * // Gemini-native: uses systemInstruction field directly
+ * const text = await geminiProvider.generateText('What is 2+2?', {
+ *   systemPrompt: 'You are a helpful assistant.'
+ * });
  * ```
  */
 export const withSystemPrompt = (provider: LLMProvider, systemPrompt: string): LLMProvider => ({

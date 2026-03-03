@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { withRetry } from '../retry';
+import { withRetry, withSystemPrompt } from '../retry';
 import type { LLMProvider } from '../types';
 
 /** Creates a mock LLMProvider with the given generateText implementation */
@@ -109,5 +109,68 @@ describe('withRetry', () => {
 
 		const result = await reliable.generateText('hello');
 		expect(result).toBe('Echo: hello');
+	});
+});
+
+describe('withSystemPrompt', () => {
+	it('should prepend system prompt to user prompt when no options are passed', async () => {
+		const generateText = vi.fn<LLMProvider['generateText']>().mockResolvedValue('ok');
+		const agent = withSystemPrompt({ generateText }, 'You are a helpful assistant.');
+
+		await agent.generateText('Hello!');
+
+		expect(generateText).toHaveBeenCalledWith('You are a helpful assistant.\n\nHello!');
+	});
+
+	it('should prepend system prompt when options are passed without systemPrompt', async () => {
+		const generateText = vi.fn<LLMProvider['generateText']>().mockResolvedValue('ok');
+		const agent = withSystemPrompt({ generateText }, 'Be concise.');
+
+		await agent.generateText('Summarise this.', { maxTokens: 100, temperature: 0.5 });
+
+		expect(generateText).toHaveBeenCalledWith('Be concise.\n\nSummarise this.', {
+			maxTokens: 100,
+			temperature: 0.5
+		});
+	});
+
+	it('should use call-time systemPrompt over the bound one', async () => {
+		const generateText = vi.fn<LLMProvider['generateText']>().mockResolvedValue('ok');
+		const agent = withSystemPrompt({ generateText }, 'Bound prompt.');
+
+		await agent.generateText('Hello!', { systemPrompt: 'Override prompt.' });
+
+		expect(generateText).toHaveBeenCalledWith('Override prompt.\n\nHello!', {});
+	});
+
+	it('should strip systemPrompt from options before passing to the underlying provider', async () => {
+		const generateText = vi.fn<LLMProvider['generateText']>().mockResolvedValue('ok');
+		const agent = withSystemPrompt({ generateText }, 'System.');
+
+		await agent.generateText('Hello!', { systemPrompt: 'Override.', maxTokens: 50 });
+
+		const receivedOptions = generateText.mock.calls[0]?.[1];
+		expect(receivedOptions).not.toHaveProperty('systemPrompt');
+		expect(receivedOptions).toEqual({ maxTokens: 50 });
+	});
+
+	it('should pass other options through unchanged', async () => {
+		const generateText = vi.fn<LLMProvider['generateText']>().mockResolvedValue('ok');
+		const agent = withSystemPrompt({ generateText }, 'System.');
+
+		await agent.generateText('Hello!', { maxTokens: 200, temperature: 0.9 });
+
+		expect(generateText).toHaveBeenCalledWith(expect.any(String), {
+			maxTokens: 200,
+			temperature: 0.9
+		});
+	});
+
+	it('should return the underlying provider response', async () => {
+		const generateText = vi.fn<LLMProvider['generateText']>().mockResolvedValue('World!');
+		const agent = withSystemPrompt({ generateText }, 'System.');
+
+		const result = await agent.generateText('Hello!');
+		expect(result).toBe('World!');
 	});
 });

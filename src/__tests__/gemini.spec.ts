@@ -327,4 +327,51 @@ describe('createGeminiProvider', () => {
 		const fetchUrl = (global.fetch as any).mock.calls[0][0];
 		expect(fetchUrl).toContain('gemini-1.5-pro');
 	});
+
+	it('should send systemInstruction when systemPrompt is provided', async () => {
+		(global.fetch as any).mockResolvedValue({
+			ok: true,
+			json: async () => ({
+				candidates: [{ content: { parts: [{ text: 'ok' }] } }]
+			})
+		});
+
+		const provider = createGeminiProvider({ apiKey: TEST_API_KEY });
+		await provider.generateText('Hello', { systemPrompt: 'You are a helpful assistant.' });
+
+		const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+		expect(body.systemInstruction).toEqual({
+			parts: [{ text: 'You are a helpful assistant.' }]
+		});
+	});
+
+	it('should not send systemInstruction when systemPrompt is absent', async () => {
+		(global.fetch as any).mockResolvedValue({
+			ok: true,
+			json: async () => ({
+				candidates: [{ content: { parts: [{ text: 'ok' }] } }]
+			})
+		});
+
+		const provider = createGeminiProvider({ apiKey: TEST_API_KEY });
+		await provider.generateText('Hello');
+
+		const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+		expect(body).not.toHaveProperty('systemInstruction');
+	});
+
+	it('should not include systemPrompt in generationConfig', async () => {
+		(global.fetch as any).mockResolvedValue({
+			ok: true,
+			json: async () => ({
+				candidates: [{ content: { parts: [{ text: 'ok' }] } }]
+			})
+		});
+
+		const provider = createGeminiProvider({ apiKey: TEST_API_KEY });
+		await provider.generateText('Hello', { systemPrompt: 'You are a helpful assistant.' });
+
+		const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+		expect(body.generationConfig).not.toHaveProperty('systemPrompt');
+	});
 });
