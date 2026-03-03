@@ -64,7 +64,10 @@ export const withSystemPrompt = (provider: LLMProvider, systemPrompt: string): L
 	generateText: async (prompt: string, options?: LLMOptions): Promise<string | null> => {
 		const effective = options?.systemPrompt ?? systemPrompt;
 		const fullPrompt = `${effective}\n\n${prompt}`;
-		const { systemPrompt: _, ...rest } = options ?? {};
+		if (options === undefined) {
+			return provider.generateText(fullPrompt);
+		}
+		const { systemPrompt: _, ...rest } = options;
 		return provider.generateText(fullPrompt, rest);
 	}
 });

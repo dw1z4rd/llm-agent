@@ -12,11 +12,11 @@ const buildGeminiUrl = (model: string) =>
  * Safely calls the Gemini API, ensuring that sensitive information (like the API key)
  * is never logged to the console, even if the request fails or throws an error.
  */
-export async function callGemini(
+export async function callGemini<T = GeminiResponse>(
 	apiKey: string,
 	body: unknown,
 	model: string = DEFAULT_MODEL
-): Promise<any> {
+): Promise<T | null> {
 	const url = `${buildGeminiUrl(model)}?key=${apiKey}`;
 
 	try {
@@ -36,7 +36,7 @@ export async function callGemini(
 			return null;
 		}
 
-		return await response.json();
+		return await response.json() as T;
 	} catch (e: any) {
 		// Redact API key from error message if it appears (e.g. in URL)
 		const rawMsg = e.message || String(e);
@@ -74,9 +74,12 @@ export const extractCleanGeminiText = (data: GeminiResponse | null | undefined):
  */
 export const createGeminiProvider = (config: GeminiProviderConfig): LLMProvider => ({
 	generateText: async (prompt: string, options?: LLMOptions): Promise<string | null> => {
-		const data = await callGemini(
+		const data = await callGemini<GeminiResponse>(
 			config.apiKey,
 			{
+				...(options?.systemPrompt != null
+					? { systemInstruction: { parts: [{ text: options.systemPrompt }] } }
+					: {}),
 				contents: [{ role: 'user', parts: [{ text: prompt }] }],
 				generationConfig: {
 					...(options?.maxTokens != null ? { maxOutputTokens: options.maxTokens } : {}),
