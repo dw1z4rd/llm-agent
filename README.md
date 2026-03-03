@@ -1,4 +1,4 @@
-# @reality-engine/llm-agent
+# @llm/agent
 
 A lightweight, **LLM-agnostic** AI agent library. Plug in any LLM provider (Gemini, OpenAI, Anthropic, Ollama, etc.) with zero lock-in. Use it for any project — audio generation, server monitoring, chatbots, code analysis, or anything else that needs an LLM.
 
