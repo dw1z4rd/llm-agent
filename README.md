@@ -1,81 +1,38 @@
 # @llm/agent
 
-A lightweight, **LLM-agnostic** AI agent library. Plug in any LLM provider (Gemini, OpenAI, Anthropic, Ollama, etc.) with zero lock-in. Use it for any project — audio generation, server monitoring, chatbots, code analysis, or anything else that needs an LLM.
+A lightweight, **LLM-agnostic** AI agent library. Plug in any LLM provider (Gemini, OpenAI, Anthropic, Ollama, etc.) with zero lock-in.
 
 ## Features
 
 - **`LLMProvider` interface** — generic contract any LLM can implement
-- **`withRetry()`** — automatic retry wrapper for any provider
-- **`createGeminiProvider()`** — built-in Google Gemini provider
-- **`callGemini()`** — low-level Gemini API client (for advanced features like tool/function calling)
+- **`withRetry()`** — automatic retry with exponential backoff for any provider
+- **`withSystemPrompt()`** — default system prompt for any provider
+- **`createGeminiProvider()`** — built-in Google Gemini provider (uses native `systemInstruction`)
+- **`callGemini()`** — low-level Gemini API client for advanced use (tool/function calling, etc.)
 - API key redaction in all error logs
-- Zero dependencies, zero project-specific logic
+- Zero runtime dependencies
+
+## Installation
+
+```bash
+npm install @llm/agent
+```
 
 ## Quick Start
 
-### Using the Generic Interface
-
 ```typescript
-import { createGeminiProvider, withRetry } from '@reality-engine/llm-agent';
+import { createGeminiProvider, withRetry, withSystemPrompt } from '@llm/agent';
 
-// Create a provider backed by Gemini
 const gemini = createGeminiProvider({ apiKey: process.env.GEMINI_API_KEY });
 
-// Wrap with retry logic
-const provider = withRetry(gemini, { maxRetries: 3 });
+const provider = withSystemPrompt(
+  withRetry(gemini, { maxRetries: 3, initialDelayMs: 500, backoffFactor: 2 }),
+  'You are a helpful assistant.'
+);
 
-// Generate text — works for any use case
-const response = await provider.generateText('Describe a rainy soundscape', {
-  maxTokens: 200,
-  temperature: 0.9
-});
-```
-
-### Plugging in a Different LLM
-
-Implement the `LLMProvider` interface to use any LLM:
-
-```typescript
-import { withRetry } from '@reality-engine/llm-agent';
-import type { LLMProvider, LLMOptions } from '@reality-engine/llm-agent';
-
-// Example: OpenAI provider
-const openaiProvider: LLMProvider = {
-  generateText: async (prompt: string, options?: LLMOptions) => {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4',
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: options?.maxTokens,
-        temperature: options?.temperature
-      })
-    });
-    const data = await response.json();
-    return data.choices?.[0]?.message?.content ?? null;
-  }
-};
-
-// Use it with retry, same as any other provider
-const reliable = withRetry(openaiProvider, { maxRetries: 3 });
-const text = await reliable.generateText('Summarize CPU usage trends');
-```
-
-### Low-Level Gemini API (Advanced)
-
-For Gemini-specific features like function/tool calling:
-
-```typescript
-import { callGemini } from '@reality-engine/llm-agent';
-
-const data = await callGemini(apiKey, {
-  contents: [{ role: 'user', parts: [{ text: 'Create something' }] }],
-  tools: [{ functionDeclarations: myTools }],
-  generationConfig: { maxOutputTokens: 2048 }
+const response = await provider.generateText('Summarise this article...', {
+  maxTokens: 300,
+  temperature: 0.7
 });
 ```
 
@@ -91,11 +48,24 @@ interface LLMProvider {
 interface LLMOptions {
   maxTokens?: number;
   temperature?: number;
+  /** Passed to the provider as-is. Providers handle this natively where supported
+   *  (e.g. Gemini sends it as systemInstruction). Custom providers must implement it. */
+  systemPrompt?: string;
 }
 
 interface RetryConfig {
   maxRetries: number;
+  /** Initial delay before the first retry in ms (default: 500) */
+  initialDelayMs?: number;
+  /** Multiplier applied to the delay after each attempt (default: 2) */
+  backoffFactor?: number;
   onRetryableFailure?: (attempt: number, error?: unknown) => void;
+}
+
+interface GeminiProviderConfig {
+  apiKey: string;
+  /** Defaults to gemini-2.0-flash */
+  model?: string;
 }
 ```
 
@@ -104,7 +74,88 @@ interface RetryConfig {
 | Function | Description |
 |---|---|
 | `createGeminiProvider(config)` | Create an `LLMProvider` backed by Google Gemini |
-| `withRetry(provider, config?)` | Wrap any `LLMProvider` with automatic retry logic |
-| `callGemini(apiKey, body, model?)` | Low-level Gemini API call (for tool calling, etc.) |
+| `withRetry(provider, config?)` | Wrap any provider with retry logic and exponential backoff |
+| `withSystemPrompt(provider, systemPrompt)` | Wrap any provider with a default system prompt |
+| `callGemini<T>(apiKey, body, model?)` | Low-level Gemini API call, returns `T \| null` |
 | `extractGeminiText(response)` | Extract text from a raw Gemini API response |
-| `extractCleanGeminiText(response)` | Extract + trim + remove quotes from Gemini response |
+| `extractCleanGeminiText(response)` | Extract and trim text, stripping surrounding quotes |
+
+### `withRetry`
+
+Retries on null/empty responses and thrown errors, with exponential backoff between attempts.
+
+```typescript
+const provider = withRetry(gemini, {
+  maxRetries: 4,
+  initialDelayMs: 250,  // first retry after 250ms
+  backoffFactor: 2,     // then 500ms, 1000ms, ...
+  onRetryableFailure: (attempt, error) => console.warn(`Attempt ${attempt} failed`, error)
+});
+```
+
+### `withSystemPrompt`
+
+Sets a default system prompt on every call. Call-time `options.systemPrompt` takes precedence.
+
+The system prompt is passed via `options` — providers handle it natively where supported. `createGeminiProvider` sends it as `systemInstruction`. Custom providers must read and apply `options.systemPrompt` themselves.
+
+```typescript
+const agent = withSystemPrompt(provider, 'You are a concise assistant. Reply in one sentence.');
+
+// Uses the bound system prompt
+await agent.generateText('What is 2+2?');
+
+// Call-time override
+await agent.generateText('What is 2+2?', { systemPrompt: 'Reply only with a number.' });
+```
+
+### Custom providers
+
+Implement `LLMProvider` to use any LLM:
+
+```typescript
+import type { LLMProvider, LLMOptions } from '@llm/agent';
+
+const openaiProvider: LLMProvider = {
+  generateText: async (prompt: string, options?: LLMOptions) => {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [
+          ...(options?.systemPrompt ? [{ role: 'system', content: options.systemPrompt }] : []),
+          { role: 'user', content: prompt }
+        ],
+        max_tokens: options?.maxTokens,
+        temperature: options?.temperature
+      })
+    });
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content ?? null;
+  }
+};
+```
+
+### Low-level Gemini API
+
+For Gemini-specific features like function/tool calling, use `callGemini` directly:
+
+```typescript
+import { callGemini } from '@llm/agent';
+
+const data = await callGemini(apiKey, {
+  contents: [{ role: 'user', parts: [{ text: 'Call my function' }] }],
+  tools: [{ functionDeclarations: myTools }],
+  generationConfig: { maxOutputTokens: 2048 }
+});
+```
+
+For non-standard response shapes, pass a type parameter:
+
+```typescript
+const data = await callGemini<MyResponseShape>(apiKey, body);
+```
