@@ -47,40 +47,26 @@ export const withRetry = (provider: LLMProvider, config?: RetryConfig): LLMProvi
 });
 
 /**
- * Wraps an LLMProvider to prepend a system prompt to every request.
- * Works with any LLMProvider regardless of the underlying LLM.
+ * Wraps an LLMProvider to set a default system prompt on every request.
+ * The `systemPrompt` is passed via `options` so providers can handle it
+ * natively (e.g. Gemini sends it as `systemInstruction`).
  *
- * The `systemPrompt` passed via `options` at call-time takes precedence
- * over the one provided here.
+ * Call-time `options.systemPrompt` takes precedence over the bound default.
  *
- * **Note:** This wrapper uses text concatenation (`"<system>\n\n<user>"`),
- * which is provider-agnostic but bypasses native system prompt fields.
- * For example, `createGeminiProvider` sends `systemPrompt` as a native
- * `systemInstruction` when passed via `options` directly — but that native
- * path is not used when going through this wrapper.
- * Prefer passing `systemPrompt` in `options` directly when using a provider
- * that supports it natively.
+ * **Note for custom provider implementors:** `LLMProvider.generateText` is
+ * expected to respect `options.systemPrompt`. If your implementation ignores
+ * it, this wrapper will have no effect.
  *
  * @example
  * ```ts
- * // Universal: works with any provider via text concatenation
  * const agent = withSystemPrompt(provider, 'You are a helpful assistant.');
  * const text = await agent.generateText('What is 2+2?');
- *
- * // Gemini-native: uses systemInstruction field directly
- * const text = await geminiProvider.generateText('What is 2+2?', {
- *   systemPrompt: 'You are a helpful assistant.'
- * });
  * ```
  */
 export const withSystemPrompt = (provider: LLMProvider, systemPrompt: string): LLMProvider => ({
-	generateText: async (prompt: string, options?: LLMOptions): Promise<string | null> => {
-		const effective = options?.systemPrompt ?? systemPrompt;
-		const fullPrompt = `${effective}\n\n${prompt}`;
-		if (options === undefined) {
-			return provider.generateText(fullPrompt);
-		}
-		const { systemPrompt: _, ...rest } = options;
-		return provider.generateText(fullPrompt, rest);
-	}
+	generateText: (prompt: string, options?: LLMOptions) =>
+		provider.generateText(prompt, {
+			...options,
+			systemPrompt: options?.systemPrompt ?? systemPrompt
+		})
 });
